@@ -1,4 +1,4 @@
-"""
+﻿"""
 scripts/set_github_secrets.py
 Sets all required GitHub Actions secrets for Muhammad-Subhan034/fraud-detection-mlops
 using the GitHub REST API + libsodium encryption (PyNaCl).
@@ -23,7 +23,7 @@ from nacl import encoding, public
 REPO  = "Muhammad-Subhan034/fraud-detection-mlops"
 API   = f"https://api.github.com/repos/{REPO}"
 
-# ── Secret values (all pre-filled for this project) ───────────────────────────
+# â”€â”€ Secret values (all pre-filled for this project) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SECRETS = {
     "KUBEFLOW_HOST": "http://localhost:8080",
 
@@ -133,7 +133,7 @@ def main():
         encrypted = encrypt_secret(pub_key, value)
         ok = set_secret(name, value, key_id, encrypted, headers)
         if ok:
-            print("✓")
+            print("âœ“")
         else:
             print("FAILED")
             all_ok = False
@@ -146,7 +146,7 @@ def main():
         secrets = resp.json().get("secrets", [])
         print("  Secrets now on repo:")
         for s in secrets:
-            print(f"    • {s['name']}  (updated: {s['updated_at'][:10]})")
+            print(f"    â€¢ {s['name']}  (updated: {s['updated_at'][:10]})")
 
     print()
     print("=" * 55)
@@ -161,10 +161,11 @@ def main():
         print("  Or trigger Stage 4 manually via GitHub Actions UI:")
         print("    https://github.com/Muhammad-Subhan034/fraud-detection-mlops/actions")
     else:
-        print("  Some secrets failed — check errors above.")
+        print("  Some secrets failed â€” check errors above.")
     print("=" * 55)
     print()
 
 
 if __name__ == "__main__":
     main()
+
