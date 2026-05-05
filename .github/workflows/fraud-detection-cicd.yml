@@ -1,4 +1,4 @@
-﻿# .github/workflows/fraud-detection-cicd.yml
+# .github/workflows/fraud-detection-cicd.yml
 # =============================================================
 # Production-grade CI/CD Pipeline for Fraud Detection System
 # Stage 1: CI (lint, test, data validation)
@@ -73,7 +73,7 @@ jobs:
             --exclude=__pycache__,.git
 
       - name: Check formatting with black
-        # warn only â€” don't block CI on formatting in demo mode
+        # warn only   " don't block CI on formatting in demo mode
         continue-on-error: true
         run: black --check --diff src/ kubeflow/ tests/
 
@@ -131,7 +131,7 @@ jobs:
               sys.exit(1)
           if results.get('warnings'):
               print('Data quality WARNINGS:', results['warnings'])
-          print('Data quality PASSED âœ“')
+          print('Data quality PASSED   "')
           EOF
 
 # ============================================================
@@ -268,11 +268,11 @@ jobs:
         run: |
           python kubeflow/pipeline/submit_pipeline.py \
             --compile-only
-          echo "Pipeline YAML compiled âœ“"
+          echo "Pipeline YAML compiled   ""
           ls -lh fraud_detection_pipeline.yaml
 
       - name: Configure kubectl
-        # continue-on-error: no real cluster in demo â€” step is skipped gracefully
+        # continue-on-error: no real cluster in demo   " step is skipped gracefully
         continue-on-error: true
         uses: azure/k8s-set-context@v3
         with:
@@ -290,7 +290,7 @@ jobs:
             --host "$KUBEFLOW_HOST" \
             --data-dir "/mnt/data/raw" \
             --mlflow "http://mlflow-service.fraud-detection.svc.cluster.local:5000" \
-            || echo "âš ï¸  Pipeline submission skipped (no live Kubeflow cluster) â€” pipeline YAML compiled successfully âœ“"
+            || echo "        Pipeline submission skipped (no live Kubeflow cluster)   " pipeline YAML compiled successfully   ""
 
       - name: Simulate pipeline execution summary
         run: |
@@ -299,11 +299,11 @@ jobs:
           echo "=============================================="
           echo "  Pipeline:  fraud-detection-pipeline"
           echo "  Namespace: fraud-detection"
-          echo "  Steps:     7 (ingestion â†’ validation â†’ preprocessing"
-          echo "                â†’ feature_eng â†’ training â†’ evaluation"
-          echo "                â†’ conditional_deployment)"
+          echo "  Steps:     7 (ingestion   ' validation   ' preprocessing"
+          echo "                  ' feature_eng   ' training   ' evaluation"
+          echo "                  ' conditional_deployment)"
           echo "  Retry:     ingestion=3x, training=1x, others=2x"
-          echo "  Status:    COMPILED âœ“  |  Submitted: see Kubeflow UI"
+          echo "  Status:    COMPILED   "  |  Submitted: see Kubeflow UI"
           echo "=============================================="
 
       - name: Wait for pipeline completion
@@ -315,7 +315,7 @@ jobs:
             --host "$KUBEFLOW_HOST" \
             --timeout 3600 \
             --poll-interval 30 \
-            || echo "âš ï¸  Pipeline wait skipped (no live cluster)"
+            || echo "        Pipeline wait skipped (no live cluster)"
 
   deploy-api:
     name: "Stage 3: Deploy Inference API"
@@ -341,12 +341,12 @@ jobs:
           kubectl set image deployment/fraud-api \
             fraud-api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}@$IMAGE_TAG \
             -n ${{ env.NAMESPACE }} \
-            || echo "âš ï¸  kubectl not connected â€” skipping live rollout"
+            || echo "        kubectl not connected   " skipping live rollout"
 
           kubectl rollout status deployment/fraud-api \
             -n ${{ env.NAMESPACE }} \
             --timeout=300s \
-            || echo "âš ï¸  Rollout status skipped"
+            || echo "        Rollout status skipped"
 
       - name: Deployment summary
         run: |
@@ -358,7 +358,7 @@ jobs:
           echo "  Namespace: fraud-detection"
           echo "  Endpoints: /health  /predict  /predict/batch  /metrics"
           echo "  Port:      8000"
-          echo "  Status:    Image built & pushed to GHCR âœ“"
+          echo "  Status:    Image built & pushed to GHCR   ""
           echo "=============================================="
 
       - name: Notify on deployment
@@ -439,8 +439,8 @@ jobs:
             --host "$KUBEFLOW_HOST" \
             --data-dir "/mnt/data/raw" \
             --compile-only \
-            && echo "âœ… Retraining pipeline compiled and would be submitted to $KUBEFLOW_HOST" \
-            || echo "âœ… Retraining triggered (pipeline compiled â€” submit requires live cluster)"
+            && echo "    Retraining pipeline compiled and would be submitted to $KUBEFLOW_HOST" \
+            || echo "    Retraining triggered (pipeline compiled   " submit requires live cluster)"
 
       - name: Create GitHub Issue if retrain skipped
         if: steps.retrain-check.outputs.should_retrain == 'false'
@@ -450,7 +450,7 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo:  context.repo.repo,
-              title: `[Monitoring] Alert received â€” retraining not triggered`,
+              title: `[Monitoring] Alert received   " retraining not triggered`,
               body:  `**Trigger:** ${{ github.event.inputs.trigger_reason }}\n**Reason skipped:** ${{ steps.retrain-check.outputs.reason }}\n**Recall:** ${{ github.event.inputs.current_recall }}\n**Drift PSI:** ${{ github.event.inputs.drift_score }}`,
               labels: ['monitoring', 'ml-ops']
             });
