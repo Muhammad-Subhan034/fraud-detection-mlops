@@ -1,0 +1,25 @@
+# docker/Dockerfile.pipeline
+# Training pipeline image — used by all Kubeflow components
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# System dependencies for ML libraries
+RUN apt-get update && apt-get install -y \
+    gcc g++ make libgomp1 git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all pipeline components and source
+COPY kubeflow/components/ /app/components/
+COPY src/                 /app/src/
+
+ENV PYTHONPATH=/app
+ENV LOG_LEVEL=INFO
+
+# Default entrypoint (overridden per component)
+ENTRYPOINT ["python"]

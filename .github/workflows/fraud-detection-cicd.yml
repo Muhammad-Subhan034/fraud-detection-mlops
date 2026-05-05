@@ -1,0 +1,422 @@
+# .github/workflows/fraud-detection-cicd.yml
+# =============================================================
+# Production-grade CI/CD Pipeline for Fraud Detection System
+# Stage 1: CI (lint, test, data validation)
+# Stage 2: Build & package Docker images
+# Stage 3: Deploy to Kubeflow + Kubernetes
+# Stage 4: Intelligent triggers (drift + performance alerts)
+# =============================================================
+
+name: Fraud Detection CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # Intelligent trigger: called by monitoring alerts webhook
+  workflow_dispatch:
+    inputs:
+      trigger_reason:
+        description: 'Reason for manual trigger (e.g., drift_alert, recall_drop)'
+        required: false
+        default: 'manual'
+      drift_score:
+        description: 'Current drift PSI score (optional)'
+        required: false
+      current_recall:
+        description: 'Current model recall (optional)'
+        required: false
+  # Scheduled periodic retraining (weekly)
+  schedule:
+    - cron: '0 2 * * 0'   # Every Sunday at 2 AM UTC
+
+env:
+  REGISTRY:          ghcr.io
+  IMAGE_NAME_API:    ${{ github.repository }}/fraud-inference-api
+  IMAGE_NAME_TRAIN:  ${{ github.repository }}/fraud-training-pipeline
+  PYTHON_VERSION:    "3.10"
+  KUBEFLOW_HOST:     ${{ secrets.KUBEFLOW_HOST }}
+  NAMESPACE:         fraud-detection
+
+# ============================================================
+# STAGE 1: CONTINUOUS INTEGRATION
+# ============================================================
+jobs:
+  lint-and-test:
+    name: "Stage 1: Lint & Unit Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 black isort pytest pytest-cov
+          # flask needed to lint alert_webhook_proxy without ImportError
+          pip install flask gunicorn
+
+      - name: Lint with flake8
+        run: |
+          flake8 src/ kubeflow/ tests/ \
+            --max-line-length=120 \
+            --ignore=E203,W503,E501 \
+            --exclude=__pycache__,.git
+
+      - name: Check formatting with black
+        run: black --check --diff src/ kubeflow/ tests/
+
+      - name: Check imports with isort
+        run: isort --check-only src/ kubeflow/ tests/
+
+      - name: Run unit tests with coverage
+        run: |
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=10 \
+            -v
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+
+  data-validation:
+    name: "Stage 1: Data Validation Checks"
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run data schema validation
+        run: |
+          python scripts/validate_data_schema.py \
+            --schema-path data_schema.yaml \
+            --sample-data data/sample/sample_transactions.parquet
+
+      - name: Run data quality checks
+        run: |
+          python - <<'EOF'
+          import sys
+          from src.data.quality_checks import run_quality_checks
+          results = run_quality_checks('data/sample/sample_transactions.parquet')
+          if not results['passed']:
+              print('Data quality FAILED:', results['errors'])
+              sys.exit(1)
+          if results.get('warnings'):
+              print('Data quality WARNINGS:', results['warnings'])
+          print('Data quality PASSED ✓')
+          EOF
+
+# ============================================================
+# STAGE 2: BUILD & PACKAGING
+# ============================================================
+  build-images:
+    name: "Stage 2: Build & Push Docker Images"
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, data-validation]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_image_tag:      ${{ steps.meta-api.outputs.tags }}
+      training_image_tag: ${{ steps.meta-train.outputs.tags }}
+      image_digest:       ${{ steps.build-api.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Inference API Image ----
+      - name: Extract metadata for API image
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Inference API image
+        id: build-api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # ---- Training Pipeline Image ----
+      - name: Extract metadata for training image
+        id: meta-train
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TRAIN }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Training Pipeline image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.pipeline
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-train.outputs.tags }}
+          labels: ${{ steps.meta-train.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # ---- Alert Webhook Proxy Image ----
+      - name: Extract metadata for webhook image
+        id: meta-webhook
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/alert-webhook
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Alert Webhook Proxy image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.webhook
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-webhook.outputs.tags }}
+          labels: ${{ steps.meta-webhook.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Run container security scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:latest
+          format: table
+          exit-code: 0    # warn only (set to 1 to block on HIGH/CRITICAL)
+          severity: HIGH,CRITICAL
+
+# ============================================================
+# STAGE 3: CONTINUOUS DEPLOYMENT
+# ============================================================
+  deploy-pipeline:
+    name: "Stage 3: Trigger Kubeflow Pipeline"
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Kubeflow SDK
+        run: pip install kfp==2.7.0 kfp-kubernetes==1.2.0
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Compile Kubeflow Pipeline
+        run: |
+          python kubeflow/pipeline/submit_pipeline.py \
+            --compile-only
+          echo "Pipeline YAML compiled ✓"
+
+      - name: Submit Kubeflow Pipeline Run
+        id: submit-pipeline
+        env:
+          KUBEFLOW_HOST: ${{ secrets.KUBEFLOW_HOST }}
+          TRIGGER_REASON: ${{ github.event.inputs.trigger_reason || 'ci_cd_push' }}
+        run: |
+          python kubeflow/pipeline/submit_pipeline.py \
+            --host "$KUBEFLOW_HOST" \
+            --data-dir "/mnt/data/raw" \
+            --mlflow "http://mlflow-service.fraud-detection.svc.cluster.local:5000"
+          echo "Pipeline submitted ✓"
+
+      - name: Wait for pipeline completion
+        env:
+          KUBEFLOW_HOST: ${{ secrets.KUBEFLOW_HOST }}
+        run: |
+          python scripts/wait_for_pipeline.py \
+            --host "$KUBEFLOW_HOST" \
+            --timeout 3600 \
+            --poll-interval 30
+
+  deploy-api:
+    name: "Stage 3: Deploy Inference API"
+    runs-on: ubuntu-latest
+    needs: deploy-pipeline
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Deploy API to Kubernetes
+        run: |
+          # Update image tag in deployment
+          IMAGE_TAG="${{ needs.build-images.outputs.image_digest }}"
+          kubectl set image deployment/fraud-api \
+            fraud-api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}@$IMAGE_TAG \
+            -n ${{ env.NAMESPACE }}
+
+          # Wait for rollout
+          kubectl rollout status deployment/fraud-api \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+          echo "API deployed successfully ✓"
+
+      - name: Smoke test deployed API
+        run: |
+          # Port-forward for test
+          kubectl port-forward svc/fraud-api-service 8000:8000 \
+            -n ${{ env.NAMESPACE }} &
+          sleep 5
+
+          # Health check
+          curl -f http://localhost:8000/health || exit 1
+          echo "Health check passed ✓"
+
+          # Quick prediction test
+          curl -f -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"TransactionAmt": 100.0, "ProductCD": "W"}' || exit 1
+          echo "Smoke test passed ✓"
+
+      - name: Notify on deployment
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "Fraud Detection API deployment: ${{ job.status }}"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+# ============================================================
+# STAGE 4: INTELLIGENT TRIGGER (from monitoring alerts)
+# ============================================================
+  intelligent-retrain:
+    name: "Stage 4: Intelligent Retraining Trigger"
+    runs-on: ubuntu-latest
+    # Only run when triggered by monitoring webhooks or manual dispatch
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.trigger_reason == 'drift_alert' ||
+       github.event.inputs.trigger_reason == 'recall_drop' ||
+       github.event.inputs.trigger_reason == 'performance_degradation')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Evaluate retraining need
+        id: retrain-check
+        run: |
+          python -c "
+          from src.monitoring.drift_detection import HybridRetraining
+          strategy = HybridRetraining()
+          recall = float('${{ github.event.inputs.current_recall }}' or 0.5)
+          drift  = float('${{ github.event.inputs.drift_score }}' or 0.3)
+          should, reason = strategy.should_retrain(recall=recall, max_psi=drift)
+          print(f'Should retrain: {should}, Reason: {reason}')
+          import os
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'should_retrain={str(should).lower()}\n')
+              f.write(f'reason={reason}\n')
+          "
+
+      - name: Log trigger event
+        run: |
+          echo "Trigger: ${{ github.event.inputs.trigger_reason }}"
+          echo "Recall:  ${{ github.event.inputs.current_recall }}"
+          echo "Drift:   ${{ github.event.inputs.drift_score }}"
+          echo "Decision: ${{ steps.retrain-check.outputs.should_retrain }}"
+
+      - name: Trigger retraining pipeline
+        if: steps.retrain-check.outputs.should_retrain == 'true'
+        env:
+          KUBEFLOW_HOST: ${{ secrets.KUBEFLOW_HOST }}
+        run: |
+          pip install kfp==2.7.0
+          python kubeflow/pipeline/submit_pipeline.py \
+            --host "$KUBEFLOW_HOST" \
+            --data-dir "/mnt/data/raw"
+          echo "Retraining pipeline triggered ✓"
+
+      - name: Create GitHub issue if retrain skipped
+        if: steps.retrain-check.outputs.should_retrain == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Monitoring] Alert received but retraining not triggered`,
+              body: `Reason: ${{ steps.retrain-check.outputs.reason }}\nTrigger: ${{ github.event.inputs.trigger_reason }}`,
+              labels: ['monitoring', 'ml-ops']
+            });

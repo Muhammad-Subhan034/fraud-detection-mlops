@@ -1,0 +1,110 @@
+# k8s_monitoring/alert-webhook-deployment.yaml
+# Kubernetes Deployment + Service for the Alert Webhook Proxy
+# Deploys the bridge service that converts Prometheus alerts → GitHub Actions
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraud-detection
+  labels:
+    app.kubernetes.io/part-of: fraud-detection-system
+
+---
+# Secret: store the GitHub PAT securely in Kubernetes
+# Create with:
+#   kubectl create secret generic github-cicd-secret \
+#     --from-literal=github-token=ghp_... \
+#     --namespace=fraud-detection
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-cicd-secret
+  namespace: fraud-detection
+  labels:
+    app: alert-webhook
+type: Opaque
+# stringData:
+#   github-token: "ghp_your_token_here"    # ← fill in and apply, or use kubectl create
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-webhook
+  namespace: fraud-detection
+  labels:
+    app: alert-webhook
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-webhook
+  template:
+    metadata:
+      labels:
+        app: alert-webhook
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "5001"
+        prometheus.io/path:   "/metrics"
+    spec:
+      containers:
+        - name: alert-webhook
+          image: ghcr.io/Muhammad-Subhan034/fraud-detection-mlops/alert-webhook:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5001
+              name: http
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-cicd-secret
+                  key:  github-token
+            - name: GITHUB_REPO
+              value: "Muhammad-Subhan034/fraud-detection-mlops"
+            - name: GITHUB_REF
+              value: "main"
+            - name: LOG_LEVEL
+              value: "INFO"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds:       15
+            failureThreshold:    3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds:       10
+          resources:
+            requests:
+              cpu:    "50m"
+              memory: "64Mi"
+            limits:
+              cpu:    "200m"
+              memory: "128Mi"
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-webhook
+  namespace: fraud-detection
+  labels:
+    app: alert-webhook
+spec:
+  selector:
+    app: alert-webhook
+  ports:
+    - name:       http
+      port:       5001
+      targetPort: 5001
+      protocol:   TCP
+  type: ClusterIP   # Alertmanager reaches it via cluster DNS: alert-webhook:5001

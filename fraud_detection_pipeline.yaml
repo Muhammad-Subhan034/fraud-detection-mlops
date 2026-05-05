@@ -1,0 +1,617 @@
+# PIPELINE DEFINITION
+# Name: fraud-detection-pipeline
+# Description: IEEE CIS Fraud Detection: Full MLOps pipeline with conditional deployment
+# Inputs:
+#    data_dir: str [Default: '/mnt/data/raw']
+#    mlflow_uri: str [Default: 'http://mlflow-service.fraud-detection.svc.cluster.local:5000']
+# Outputs:
+#    model-evaluation-op-eval_metrics: system.Metrics
+#    model-training-op-metrics: system.Metrics
+components:
+  comp-conditional-deployment-op:
+    executorLabel: exec-conditional-deployment-op
+    inputDefinitions:
+      artifacts:
+        deploy_decision:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        eval_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        model_dir:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        deployment_status:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-data-ingestion-op:
+    executorLabel: exec-data-ingestion-op
+    inputDefinitions:
+      parameters:
+        data_dir:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        output_stats:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-data-preprocessing-op:
+    executorLabel: exec-data-preprocessing-op
+    inputDefinitions:
+      artifacts:
+        input_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        encoders:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        output_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        stats:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-data-validation-op:
+    executorLabel: exec-data-validation-op
+    inputDefinitions:
+      artifacts:
+        input_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        validation_report:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        validation_status:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-feature-engineering-op:
+    executorLabel: exec-feature-engineering-op
+    inputDefinitions:
+      artifacts:
+        data_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        feature_metadata:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        output_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-model-evaluation-op:
+    executorLabel: exec-model-evaluation-op
+    inputDefinitions:
+      artifacts:
+        data_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model_dir:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        deploy_decision:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        eval_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        eval_output_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-model-training-op:
+    executorLabel: exec-model-training-op
+    inputDefinitions:
+      artifacts:
+        data_dir:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        mlflow_uri:
+          defaultValue: http://mlflow-service:5000
+          isOptional: true
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        model_dir:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-conditional-deployment-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - conditional_deployment_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef conditional_deployment_op(\n    model_dir:         Input[Model],\n\
+          \    eval_metrics:      Input[Metrics],\n    deploy_decision:   Input[Artifact],\n\
+          \    deployment_status: Output[Artifact],\n) -> None:\n    import subprocess,\
+          \ sys\n    subprocess.run([\n        sys.executable, \"/app/components/deployment/component.py\"\
+          ,\n        \"--model-dir\",              model_dir.path,\n        \"--eval-metrics-path\"\
+          ,      eval_metrics.path,\n        \"--deploy-decision-path\",   deploy_decision.path,\n\
+          \        \"--deployment-status-path\", deployment_status.path,\n    ], check=True)\n\
+          \n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuRequest: 0.25
+          memoryRequest: 0.268435456
+    exec-data-ingestion-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_ingestion_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_ingestion_op(\n    data_dir: str,\n    output_data: Output[Dataset],\n\
+          \    output_stats: Output[Artifact],\n) -> None:\n    import subprocess,\
+          \ sys\n    result = subprocess.run([\n        sys.executable, \"/app/components/data_ingestion/component.py\"\
+          ,\n        \"--data-dir\",    data_dir,\n        \"--output-path\", output_data.path,\n\
+          \        \"--stats-path\",  output_stats.path,\n    ], check=True)\n\n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuLimit: 2.0
+          cpuRequest: 0.5
+          memoryLimit: 4.294967296
+          memoryRequest: 1.073741824
+    exec-data-preprocessing-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_preprocessing_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_preprocessing_op(\n    input_data:    Input[Dataset],\n\
+          \    output_dir:    Output[Dataset],\n    encoders:      Output[Model],\n\
+          \    stats:         Output[Artifact],\n) -> None:\n    import subprocess,\
+          \ sys, os\n    os.makedirs(output_dir.path, exist_ok=True)\n    subprocess.run([\n\
+          \        sys.executable, \"/app/components/data_preprocessing/component.py\"\
+          ,\n        \"--input-path\",   input_data.path,\n        \"--output-dir\"\
+          ,   output_dir.path,\n        \"--encoder-path\", encoders.path,\n     \
+          \   \"--stats-path\",   stats.path,\n    ], check=True)\n\n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuLimit: 4.0
+          cpuRequest: 1.0
+          memoryLimit: 8.589934592
+          memoryRequest: 4.294967296
+    exec-data-validation-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_validation_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_validation_op(\n    input_data:        Input[Dataset],\n\
+          \    validation_report: Output[Artifact],\n    validation_status: Output[Artifact],\n\
+          ) -> None:\n    import subprocess, sys\n    subprocess.run([\n        sys.executable,\
+          \ \"/app/components/data_validation/component.py\",\n        \"--input-path\"\
+          ,             input_data.path,\n        \"--output-report-path\",     validation_report.path,\n\
+          \        \"--validation-status-path\", validation_status.path,\n    ], check=True)\n\
+          \n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuRequest: 0.25
+          memoryRequest: 0.536870912
+    exec-feature-engineering-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - feature_engineering_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef feature_engineering_op(\n    data_dir:         Input[Dataset],\n\
+          \    output_dir:       Output[Dataset],\n    feature_metadata: Output[Artifact],\n\
+          ) -> None:\n    import subprocess, sys, os\n    os.makedirs(output_dir.path,\
+          \ exist_ok=True)\n    subprocess.run([\n        sys.executable, \"/app/components/feature_engineering/component.py\"\
+          ,\n        \"--data-dir\",          data_dir.path,\n        \"--output-dir\"\
+          ,        output_dir.path,\n        \"--feature-meta-path\", feature_metadata.path,\n\
+          \    ], check=True)\n\n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 4.294967296
+    exec-model-evaluation-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_evaluation_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_evaluation_op(\n    model_dir:        Input[Model],\n \
+          \   data_dir:         Input[Dataset],\n    eval_output_dir:  Output[Dataset],\n\
+          \    eval_metrics:     Output[Metrics],\n    deploy_decision:  Output[Artifact],\n\
+          ) -> None:\n    import subprocess, sys, os\n    os.makedirs(eval_output_dir.path,\
+          \ exist_ok=True)\n    subprocess.run([\n        sys.executable, \"/app/components/model_evaluation/component.py\"\
+          ,\n        \"--model-dir\",           model_dir.path,\n        \"--data-dir\"\
+          ,            data_dir.path,\n        \"--output-dir\",          eval_output_dir.path,\n\
+          \        \"--eval-metrics-path\",   eval_metrics.path,\n        \"--deploy-decision-path\"\
+          , deploy_decision.path,\n    ], check=True)\n\n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 4.294967296
+    exec-model-training-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_training_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.6.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_training_op(\n    data_dir:       Input[Dataset],\n   \
+          \ model_dir:      Output[Model],\n    metrics:        Output[Metrics],\n\
+          \    mlflow_uri:     str = \"http://mlflow-service:5000\",\n) -> None:\n\
+          \    import subprocess, sys, os\n    os.makedirs(model_dir.path, exist_ok=True)\n\
+          \    subprocess.run([\n        sys.executable, \"/app/components/model_training/component.py\"\
+          ,\n        \"--data-dir\",     data_dir.path,\n        \"--output-dir\"\
+          ,   model_dir.path,\n        \"--metrics-path\", metrics.path,\n       \
+          \ \"--mlflow-uri\",   mlflow_uri,\n    ], check=True)\n\n"
+        image: fraud-detection/pipeline:latest
+        resources:
+          cpuLimit: 4.0
+          cpuRequest: 2.0
+          memoryLimit: 17.179869184
+          memoryRequest: 8.589934592
+pipelineInfo:
+  description: 'IEEE CIS Fraud Detection: Full MLOps pipeline with conditional deployment'
+  name: fraud-detection-pipeline
+root:
+  dag:
+    outputs:
+      artifacts:
+        model-evaluation-op-eval_metrics:
+          artifactSelectors:
+          - outputArtifactKey: eval_metrics
+            producerSubtask: model-evaluation-op
+        model-training-op-metrics:
+          artifactSelectors:
+          - outputArtifactKey: metrics
+            producerSubtask: model-training-op
+    tasks:
+      conditional-deployment-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-conditional-deployment-op
+        dependentTasks:
+        - model-evaluation-op
+        - model-training-op
+        inputs:
+          artifacts:
+            deploy_decision:
+              taskOutputArtifact:
+                outputArtifactKey: deploy_decision
+                producerTask: model-evaluation-op
+            eval_metrics:
+              taskOutputArtifact:
+                outputArtifactKey: eval_metrics
+                producerTask: model-evaluation-op
+            model_dir:
+              taskOutputArtifact:
+                outputArtifactKey: model_dir
+                producerTask: model-training-op
+        retryPolicy:
+          backoffDuration: 60s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: conditional-deployment-op
+      data-ingestion-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-ingestion-op
+        inputs:
+          parameters:
+            data_dir:
+              componentInputParameter: data_dir
+        retryPolicy:
+          backoffDuration: 60s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 3
+        taskInfo:
+          name: data-ingestion-op
+      data-preprocessing-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-preprocessing-op
+        dependentTasks:
+        - data-ingestion-op
+        - data-validation-op
+        inputs:
+          artifacts:
+            input_data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: data-ingestion-op
+        retryPolicy:
+          backoffDuration: 30s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: data-preprocessing-op
+      data-validation-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-validation-op
+        dependentTasks:
+        - data-ingestion-op
+        inputs:
+          artifacts:
+            input_data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: data-ingestion-op
+        retryPolicy:
+          backoffDuration: 30s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: data-validation-op
+      feature-engineering-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-feature-engineering-op
+        dependentTasks:
+        - data-preprocessing-op
+        inputs:
+          artifacts:
+            data_dir:
+              taskOutputArtifact:
+                outputArtifactKey: output_dir
+                producerTask: data-preprocessing-op
+        retryPolicy:
+          backoffDuration: 30s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: feature-engineering-op
+      model-evaluation-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-evaluation-op
+        dependentTasks:
+        - feature-engineering-op
+        - model-training-op
+        inputs:
+          artifacts:
+            data_dir:
+              taskOutputArtifact:
+                outputArtifactKey: output_dir
+                producerTask: feature-engineering-op
+            model_dir:
+              taskOutputArtifact:
+                outputArtifactKey: model_dir
+                producerTask: model-training-op
+        retryPolicy:
+          backoffDuration: 30s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: model-evaluation-op
+      model-training-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-training-op
+        dependentTasks:
+        - feature-engineering-op
+        inputs:
+          artifacts:
+            data_dir:
+              taskOutputArtifact:
+                outputArtifactKey: output_dir
+                producerTask: feature-engineering-op
+          parameters:
+            mlflow_uri:
+              componentInputParameter: mlflow_uri
+        retryPolicy:
+          backoffDuration: 120s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 1
+        taskInfo:
+          name: model-training-op
+  inputDefinitions:
+    parameters:
+      data_dir:
+        defaultValue: /mnt/data/raw
+        isOptional: true
+        parameterType: STRING
+      mlflow_uri:
+        defaultValue: http://mlflow-service.fraud-detection.svc.cluster.local:5000
+        isOptional: true
+        parameterType: STRING
+  outputDefinitions:
+    artifacts:
+      model-evaluation-op-eval_metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      model-training-op-metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.6.0

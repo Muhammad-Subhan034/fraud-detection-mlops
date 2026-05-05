@@ -1,0 +1,201 @@
+{
+  "__inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}],
+  "description": "Data Drift Dashboard: Feature distributions, PSI scores, missing value trends, anomaly alerts",
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 300,
+      "title": "Drift Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {"color": "green",  "value": null},
+              {"color": "yellow", "value": 0.10},
+              {"color": "red",    "value": 0.20}
+            ]
+          },
+          "mappings": [
+            {"options": {"from": 0, "to": 0.10, "result": {"text": "STABLE"}},    "type": "range"},
+            {"options": {"from": 0.10, "to": 0.20, "result": {"text": "WARNING"}}, "type": "range"},
+            {"options": {"from": 0.20, "to": 10,   "result": {"text": "DRIFTED"}}, "type": "range"}
+          ]
+        }
+      },
+      "gridPos": {"h": 5, "w": 5, "x": 0, "y": 1},
+      "id": 301,
+      "options": {"colorMode": "background", "textMode": "auto"},
+      "title": "Overall Drift Status (PSI)",
+      "type": "stat",
+      "targets": [{"expr": "fraud_feature_psi_score", "legendFormat": "PSI"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {"color": "green",  "value": null},
+              {"color": "yellow", "value": 3},
+              {"color": "red",    "value": 10}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 5, "y": 1},
+      "id": 302,
+      "options": {"colorMode": "background"},
+      "title": "Features with Drift",
+      "type": "stat",
+      "targets": [{"expr": "fraud_drifted_features_count", "legendFormat": "# features drifted"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {"color": "green",  "value": null},
+              {"color": "yellow", "value": 0.05},
+              {"color": "red",    "value": 0.15}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 9, "y": 1},
+      "id": 303,
+      "options": {"colorMode": "background"},
+      "title": "Input Missing Rate",
+      "type": "stat",
+      "targets": [{"expr": "fraud_input_missing_rate", "legendFormat": "Missing %"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {"unit": "currencyUSD", "color": {"mode": "palette-classic"}}
+      },
+      "gridPos": {"h": 5, "w": 5, "x": 13, "y": 1},
+      "id": 304,
+      "options": {"colorMode": "value", "graphMode": "area"},
+      "title": "Avg Transaction Amount",
+      "type": "stat",
+      "targets": [{"expr": "fraud_transaction_amount_mean", "legendFormat": "Mean Amount"}]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6},
+      "id": 310,
+      "title": "Feature Distribution Trends",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 2}
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "id": 311,
+      "options": {
+        "tooltip": {"mode": "multi"},
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]}
+      },
+      "title": "PSI Score Over Time (by feature group)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "fraud_feature_psi_score",
+          "legendFormat": "Overall PSI"
+        },
+        {
+          "expr": "fraud_amount_psi_score",
+          "legendFormat": "TransactionAmt PSI"
+        },
+        {
+          "expr": "fraud_card_features_psi",
+          "legendFormat": "Card features PSI"
+        }
+      ]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {"mode": "palette-classic"}
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+      "id": 312,
+      "title": "Transaction Amount Distribution",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.25, rate(fraud_transaction_amount_bucket[10m]))",
+          "legendFormat": "p25"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(fraud_transaction_amount_bucket[10m]))",
+          "legendFormat": "p50 (median)"
+        },
+        {
+          "expr": "histogram_quantile(0.75, rate(fraud_transaction_amount_bucket[10m]))",
+          "legendFormat": "p75"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(fraud_transaction_amount_bucket[10m]))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15},
+      "id": 320,
+      "title": "Drift Alerts",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "palette-classic"}
+        }
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 321,
+      "title": "Drift Alert History",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "ALERTS{alertname=~\"DataDrift.*\", alertstate=\"firing\"}",
+          "legendFormat": "{{ alertname }}"
+        },
+        {
+          "expr": "ALERTS{alertname=~\"FraudRecall.*\", alertstate=\"firing\"}",
+          "legendFormat": "{{ alertname }}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["fraud-detection", "drift", "data-quality"],
+  "time": {"from": "now-24h", "to": "now"},
+  "title": "Fraud Detection - Data Drift",
+  "uid": "fraud-data-drift",
+  "version": 1
+}

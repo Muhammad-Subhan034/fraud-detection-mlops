@@ -1,0 +1,131 @@
+# monitoring/prometheus/rules/fraud_model_alerts.yml
+# Alert rules for ML model performance degradation
+
+groups:
+  - name: fraud_model_performance
+    interval: 30s
+    rules:
+
+      # ---- Recall Alerts ----
+      - alert: FraudRecallCritical
+        expr: fraud_model_recall < 0.70
+        for: 15s
+        labels:
+          severity: critical
+          team: ml-ops
+          trigger_retrain: "true"
+        annotations:
+          summary: "CRITICAL: Fraud recall dropped below 70%"
+          description: >
+            Fraud recall is {{ $value | humanizePercentage }}.
+            This means many fraud transactions are being missed.
+            Immediate retraining required.
+          runbook: "https://wiki.internal/fraud-detection/runbooks/recall-drop"
+          dashboard: "http://grafana:3000/d/fraud-model/model-performance"
+
+      - alert: FraudRecallWarning
+        expr: fraud_model_recall < 0.80
+        for: 30s
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "WARNING: Fraud recall below 80%"
+          description: "Fraud recall is {{ $value | humanizePercentage }}. Monitor closely."
+
+      # ---- False Positive Rate ----
+      - alert: FraudFalsePositiveRateHigh
+        expr: fraud_false_positive_rate > 0.15
+        for: 15m
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "High false positive rate in fraud detection"
+          description: >
+            False positive rate is {{ $value | humanizePercentage }}.
+            Too many legitimate transactions flagged as fraud.
+
+      # ---- Prediction Volume Drop ----
+      - alert: FraudPredictionVolumeDrop
+        expr: |
+          rate(fraud_predictions_total[5m]) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Fraud prediction volume unexpectedly low"
+          description: "Prediction rate dropped to {{ $value }}/s — possible API issue."
+
+      # ---- Model Confidence Shift ----
+      - alert: LowConfidencePredictions
+        expr: |
+          histogram_quantile(0.50,
+            rate(fraud_prediction_confidence_bucket[10m])
+          ) < 0.3
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "Model prediction confidence distribution shifted"
+          description: >
+            Median prediction confidence is {{ $value }}.
+            Model may be uncertain — possible data distribution shift.
+
+  - name: fraud_api_performance
+    rules:
+
+      # ---- API Latency ----
+      - alert: APIHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(fraud_api_request_latency_seconds_bucket{endpoint="/predict"}[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Fraud API p95 latency above 500ms"
+          description: "p95 latency is {{ $value }}s on /predict endpoint."
+
+      - alert: APILatencyCritical
+        expr: |
+          histogram_quantile(0.99,
+            rate(fraud_api_request_latency_seconds_bucket{endpoint="/predict"}[5m])
+          ) > 2.0
+        for: 3m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "CRITICAL: Fraud API p99 latency above 2s"
+          description: "p99 latency is {{ $value }}s — SLA breach imminent."
+
+      # ---- Error Rate ----
+      - alert: APIHighErrorRate
+        expr: |
+          rate(fraud_api_requests_total{status_code=~"5.."}[5m])
+          /
+          rate(fraud_api_requests_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Fraud API error rate above 5%"
+          description: "Error rate is {{ $value | humanizePercentage }}."
+
+      # ---- API Down ----
+      - alert: FraudAPIDown
+        expr: up{job="fraud-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+          page: "true"
+        annotations:
+          summary: "Fraud Detection API is DOWN"
+          description: "The fraud API has been unreachable for 1 minute."

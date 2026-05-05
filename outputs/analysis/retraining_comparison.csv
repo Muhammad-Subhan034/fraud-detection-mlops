@@ -1,0 +1,5 @@
+strategy,retrain_count,missed_alerts,compute_cost,responsiveness
+threshold_based,20,0,900,HIGH
+periodic_weekly,9,10,405,LOW
+periodic_biweekly,5,12,225,LOW
+hybrid,1,14,45,LOW

@@ -1,0 +1,62 @@
+# monitoring/prometheus/prometheus.yml
+# Prometheus configuration for Fraud Detection System
+# Scrapes: fraud model metrics, alert-webhook, node-exporter, alertmanager, itself
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+  external_labels:
+    monitor:     'fraud-detection-monitor'
+    environment: 'local-demo'
+
+# ---- Alertmanager ----
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# ---- Alert Rules ----
+rule_files:
+  - /etc/prometheus/rules/fraud_model_alerts.yml
+  - /etc/prometheus/rules/data_drift_alerts.yml
+
+# ============================================================
+# SCRAPE CONFIGS
+# ============================================================
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Custom Fraud Detection Metrics Server (real model results from training)
+  - job_name: fraud-model-metrics
+    metrics_path: /metrics
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['metrics-server:9091']
+    relabel_configs:
+      - target_label: service
+        replacement: fraud-detection-model
+
+  # Alert Webhook Proxy — tracks how many alerts were received and dispatched
+  - job_name: alert-webhook
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['alert-webhook:5001']
+    relabel_configs:
+      - target_label: service
+        replacement: alert-webhook-proxy
+
+  # Alertmanager self-monitoring
+  - job_name: alertmanager
+    static_configs:
+      - targets: ['alertmanager:9093']
+
+  # Node Exporter — host CPU / memory / disk
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']

@@ -1,0 +1,63 @@
+# monitoring/prometheus/alertmanager.yml
+# Alertmanager: routes critical ML alerts to the webhook proxy (→ GitHub Actions)
+# and warning alerts to a log-only receiver.
+#
+# Webhook proxy (alert-webhook service) listens on port 5001 at /alert
+# and translates Prometheus payloads → GitHub Actions workflow_dispatch.
+
+global:
+  resolve_timeout: 5m
+
+# Suppress duplicate child alerts when a parent critical is already firing
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: [alertname]
+
+route:
+  receiver: log-only          # default: just log (dev/local)
+  group_by: [alertname, severity, team]
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 4h
+
+  routes:
+    # ── Critical ML/drift alerts → trigger CI/CD retraining ──────────────────
+    - match_re:
+        alertname: "(FraudRecallCritical|DataDriftCritical|DataDriftDetected|APILatencyCritical|FraudAPIDown)"
+      receiver: ci-cd-retrain
+      group_wait:      10s
+      repeat_interval: 30m
+      continue: false   # stop routing once matched
+
+    # ── All other critical alerts → webhook for visibility ───────────────────
+    - match:
+        severity: critical
+      receiver: ci-cd-retrain
+      group_wait: 15s
+      repeat_interval: 1h
+
+    # ── Warning alerts → log only ─────────────────────────────────────────────
+    - match:
+        severity: warning
+      receiver: log-only
+      repeat_interval: 2h
+
+receivers:
+  # Sends to the webhook proxy which calls GitHub Actions workflow_dispatch
+  - name: ci-cd-retrain
+    webhook_configs:
+      - url: 'http://alert-webhook:5001/alert'
+        send_resolved: false      # only fire on ACTIVE alerts, not resolutions
+        max_alerts: 5
+        http_config:
+          follow_redirects: true
+
+  # Dev / local fallback: just accept and log (no external calls)
+  - name: log-only
+    webhook_configs:
+      - url: 'http://alert-webhook:5001/alert'
+        send_resolved: true
+        max_alerts: 10

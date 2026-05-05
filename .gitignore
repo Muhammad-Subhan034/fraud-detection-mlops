@@ -1,0 +1,59 @@
+# .gitignore
+
+# ── Environment / secrets ──────────────────────────────────────────────────────
+.env                    # NEVER commit real tokens — use .env.example as template
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env.local
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── ML artifacts (large — use MLflow/DVC instead) ────────────────────────────
+*.joblib
+*.pkl
+*.h5
+*.pt
+*.onnx
+models/
+
+# ── Data (Kaggle data — not committed to git) ─────────────────────────────────
+data/raw/
+data/processed/
+# Sample data IS committed (small)
+!data/sample/
+
+# ── Test / Coverage ────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+.docker/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

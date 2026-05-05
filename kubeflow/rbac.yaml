@@ -1,0 +1,50 @@
+# kubeflow/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fraud-detection-sa
+  namespace: fraud-detection
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fraud-detection-role
+  namespace: fraud-detection
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fraud-detection-rolebinding
+  namespace: fraud-detection
+subjects:
+  - kind: ServiceAccount
+    name: fraud-detection-sa
+    namespace: fraud-detection
+roleRef:
+  kind: Role
+  name: fraud-detection-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Allow pipeline pods to access Kubeflow APIs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fraud-detection-pipeline-runner
+subjects:
+  - kind: ServiceAccount
+    name: fraud-detection-sa
+    namespace: fraud-detection
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io

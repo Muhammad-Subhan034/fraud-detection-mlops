@@ -1,0 +1,38 @@
+# config/data_schema.yaml
+# Schema definition for IEEE CIS Fraud Detection dataset
+
+required_columns:
+  - TransactionID
+  - isFraud
+  - TransactionDT
+  - TransactionAmt
+
+column_types:
+  TransactionID:  numeric
+  isFraud:        numeric
+  TransactionDT:  numeric
+  TransactionAmt: numeric
+  ProductCD:      categorical
+  card1:          numeric
+  card4:          categorical
+  card6:          categorical
+
+value_ranges:
+  isFraud:
+    min: 0
+    max: 1
+  TransactionAmt:
+    min: 0.01
+    max: 50000
+
+max_null_fraction:
+  isFraud:        0.0
+  TransactionID:  0.0
+  TransactionDT:  0.0
+  TransactionAmt: 0.01
+
+fraud_rate_range:
+  min: 0.001
+  max: 0.50
+
+min_rows: 10000

@@ -1,0 +1,184 @@
+# docker-compose.yml
+# Full local demo stack:
+#   metrics-server  → exposes ML metrics on :9091
+#   alert-webhook   → bridges Alertmanager → GitHub Actions (Stage 4 CI/CD)
+#   alertmanager    → routes Prometheus alerts to alert-webhook
+#   prometheus      → scrapes metrics + fires alert rules
+#   grafana         → dashboards (system, model, data drift)
+#   mlflow          → experiment tracking
+#   node-exporter   → host CPU/memory/disk metrics
+
+version: "3.9"
+
+networks:
+  fraud-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  mlflow-data:
+
+services:
+
+  # ============================================================
+  # Custom Metrics Server (pushes real training results to /metrics)
+  # ============================================================
+  metrics-server:
+    image: python:3.10-slim
+    container_name: metrics-server
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      # Override these to force alert thresholds to fire in demo mode
+      - FORCE_RECALL=${FORCE_RECALL:-}
+      - FORCE_PSI=${FORCE_PSI:-}
+    command: >
+      bash -c "pip install -q prometheus_client pandas numpy scikit-learn &&
+               python scripts/push_metrics_to_prometheus.py"
+    ports:
+      - "9091:9091"
+    networks:
+      - fraud-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/metrics"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================
+  # Alert Webhook Proxy  ← THE MISSING LINK (was broken before)
+  # Receives Alertmanager POST on /alert (port 5001)
+  # Calls GitHub Actions workflow_dispatch for intelligent retraining
+  # ============================================================
+  alert-webhook:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.webhook
+    container_name: alert-webhook
+    ports:
+      - "5001:5001"
+    environment:
+      # GitHub PAT with Actions:write + repo scopes
+      # Set in .env file or export before running docker-compose:
+      #   export GITHUB_TOKEN=ghp_...
+      #   export GITHUB_REPO=Muhammad-Subhan034/fraud-detection-mlops
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-dummy-for-local-dev}
+      - GITHUB_REPO=${GITHUB_REPO:-Muhammad-Subhan034/fraud-detection-mlops}
+      - GITHUB_REF=${GITHUB_REF:-main}
+    networks:
+      - fraud-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================
+  # Alertmanager — routes Prometheus alerts to alert-webhook
+  # ============================================================
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - fraud-net
+    restart: unless-stopped
+    depends_on:
+      alert-webhook:
+        condition: service_healthy   # wait for proxy before routing alerts
+
+  # ============================================================
+  # Prometheus — scrapes metrics + evaluates alert rules
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - fraud-net
+    restart: unless-stopped
+    depends_on:
+      metrics-server:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  # ============================================================
+  # Grafana — dashboards for system health, model performance, drift
+  # ============================================================
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=frauddetection
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/system_health.json
+    networks:
+      - fraud-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # ============================================================
+  # MLflow Tracking Server
+  # ============================================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.10.2
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --default-artifact-root /mlflow/artifacts
+        --backend-store-uri sqlite:///mlflow/mlflow.db
+    networks:
+      - fraud-net
+    restart: unless-stopped
+
+  # ============================================================
+  # Node Exporter — host system metrics (CPU / memory / disk / network)
+  # ============================================================
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - fraud-net
+    restart: unless-stopped

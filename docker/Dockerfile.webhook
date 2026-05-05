@@ -1,0 +1,33 @@
+# docker/Dockerfile.webhook
+# Alert Webhook Proxy — receives Alertmanager webhooks and triggers GitHub Actions
+# Runs on port 5001 inside the monitoring stack
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Only the packages this lightweight service needs
+RUN pip install --no-cache-dir flask==3.0.3 requests==2.31.0 gunicorn==21.2.0
+
+COPY src/api/alert_webhook_proxy.py .
+
+# Required env vars (injected at runtime via docker-compose / k8s secret):
+#   GITHUB_TOKEN  — PAT with workflow:write scope
+#   GITHUB_REPO   — e.g. "Muhammad-Subhan034/fraud-detection-mlops"
+#   GITHUB_REF    — branch to dispatch on (default: main)
+ENV LOG_LEVEL=INFO
+
+EXPOSE 5001
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:5001/health || exit 1
+
+# Use gunicorn for production (2 workers is enough for a low-traffic webhook)
+CMD ["gunicorn", "alert_webhook_proxy:app", \
+     "--bind", "0.0.0.0:5001", \
+     "--workers", "2", \
+     "--timeout", "30", \
+     "--log-level", "info"]

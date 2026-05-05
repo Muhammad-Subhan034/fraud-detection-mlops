@@ -1,0 +1,98 @@
+# monitoring/prometheus/rules/data_drift_alerts.yml
+
+groups:
+  - name: data_drift
+    interval: 60s
+    rules:
+
+      - alert: DataDriftDetected
+        expr: fraud_feature_psi_score > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-ops
+          trigger_retrain: "true"
+        annotations:
+          summary: "Data drift detected: PSI > 0.20"
+          description: >
+            Feature PSI score is {{ $value }}.
+            Threshold: 0.20. Distribution shift may affect model accuracy.
+          action: "Trigger retraining pipeline via CI/CD webhook"
+
+      - alert: DataDriftCritical
+        expr: fraud_feature_psi_score > 0.50
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-ops
+          trigger_retrain: "true"
+        annotations:
+          summary: "CRITICAL data drift: PSI > 0.50"
+          description: >
+            PSI score is {{ $value }}. Major distribution shift detected.
+            Model predictions may be unreliable. Immediate retraining required.
+
+      - alert: MissingValueRateIncrease
+        expr: fraud_input_missing_rate > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          team: data-engineering
+        annotations:
+          summary: "Input missing value rate exceeds 15%"
+          description: >
+            Missing value rate in incoming transactions is {{ $value | humanizePercentage }}.
+            Possible upstream data pipeline issue.
+
+      - alert: TransactionAmountAnomalous
+        expr: |
+          abs(
+            avg_over_time(fraud_transaction_amount_mean[1h]) -
+            avg_over_time(fraud_transaction_amount_mean[24h] offset 1d)
+          ) / avg_over_time(fraud_transaction_amount_mean[24h] offset 1d) > 0.50
+        for: 30m
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "Transaction amount distribution anomaly"
+          description: >
+            Mean transaction amount has shifted >50% vs 24h ago.
+            Possible new fraud pattern or data issue.
+
+  - name: system_resources
+    rules:
+
+      - alert: HighCPUUsage
+        expr: |
+          container_cpu_usage_seconds_total{namespace="fraud-detection"}
+          / container_spec_cpu_quota{namespace="fraud-detection"} > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage in fraud-detection namespace"
+          description: "CPU usage at {{ $value | humanizePercentage }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          container_memory_usage_bytes{namespace="fraud-detection"}
+          / container_spec_memory_limit_bytes{namespace="fraud-detection"} > 0.90
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Memory usage critical in fraud-detection"
+          description: "Memory at {{ $value | humanizePercentage }} of limit"
+
+      - alert: PodOOMKilled
+        expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled", namespace="fraud-detection"} == 1
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod OOMKilled in fraud-detection"
+          description: "Pod {{ $labels.pod }} was OOMKilled. Increase memory limits."
