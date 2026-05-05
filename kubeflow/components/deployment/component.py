@@ -7,7 +7,6 @@ Rolls back automatically if deployment fails health checks.
 import argparse
 import json
 import logging
-import os
 import subprocess
 import time
 import requests
@@ -15,9 +14,9 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-HEALTH_CHECK_URL    = "http://fraud-api-service.fraud-detection.svc.cluster.local:8000/health"
+HEALTH_CHECK_URL = "http://fraud-api-service.fraud-detection.svc.cluster.local:8000/health"
 HEALTH_CHECK_RETRIES = 10
-HEALTH_CHECK_DELAY   = 15  # seconds
+HEALTH_CHECK_DELAY = 15  # seconds
 
 
 def check_deploy_decision(deploy_decision_path: str) -> bool:
@@ -222,9 +221,9 @@ def deploy_model(model_dir: str, eval_metrics_path: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-dir",             type=str, required=True)
-    parser.add_argument("--eval-metrics-path",     type=str, required=True)
-    parser.add_argument("--deploy-decision-path",  type=str, required=True)
+    parser.add_argument("--model-dir", type=str, required=True)
+    parser.add_argument("--eval-metrics-path", type=str, required=True)
+    parser.add_argument("--deploy-decision-path", type=str, required=True)
     parser.add_argument("--deployment-status-path", type=str, required=True)
     args = parser.parse_args()
 

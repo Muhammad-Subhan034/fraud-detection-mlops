@@ -4,13 +4,11 @@ Used in CI/CD Stage 1 to validate data schema before pipeline submission.
 """
 
 import argparse
-import json
 import logging
 import sys
 import os
 import yaml
 import pandas as pd
-import numpy as np
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -85,8 +83,8 @@ def run_quality_checks(data_path: str) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--schema-path",  required=True)
-    parser.add_argument("--sample-data",  required=True)
+    parser.add_argument("--schema-path", required=True)
+    parser.add_argument("--sample-data", required=True)
     args = parser.parse_args()
 
     if not os.path.exists(args.sample_data):

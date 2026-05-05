@@ -12,16 +12,15 @@ import logging
 import joblib
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from prometheus_client import (
-    Counter, Histogram, Gauge, Summary,
-    generate_latest, CONTENT_TYPE_LATEST
+    Counter, Histogram, Gauge, generate_latest,
+    CONTENT_TYPE_LATEST
 )
 from starlette.responses import Response
 
@@ -88,9 +87,9 @@ class ModelManager:
     def load(self, model_path: str, encoder_path: str = None):
         logger.info(f"Loading model from {model_path}")
         artifact = joblib.load(model_path)
-        self.model     = artifact["model"]
+        self.model = artifact["model"]
         self.threshold = artifact.get("threshold", 0.5)
-        self.selector  = artifact.get("selector", None)
+        self.selector = artifact.get("selector", None)
 
         if encoder_path and os.path.exists(encoder_path):
             self.encoder_artifact = joblib.load(encoder_path)
@@ -107,7 +106,7 @@ model_manager = ModelManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    model_path   = os.environ.get("MODEL_PATH", "/models/best_model.joblib")
+    model_path = os.environ.get("MODEL_PATH", "/models/best_model.joblib")
     encoder_path = os.environ.get("ENCODER_PATH", "/models/encoders.joblib")
     model_manager.load(model_path, encoder_path)
     yield
@@ -139,20 +138,21 @@ app.add_middleware(
 
 class TransactionFeatures(BaseModel):
     TransactionAmt: float = Field(..., gt=0, description="Transaction amount in USD")
-    ProductCD:      Optional[str] = Field(None, description="Product code")
-    card1:          Optional[int] = None
-    card2:          Optional[float] = None
-    card3:          Optional[float] = None
-    card4:          Optional[str] = None
-    card5:          Optional[float] = None
-    card6:          Optional[str] = None
-    addr1:          Optional[float] = None
-    addr2:          Optional[float] = None
-    dist1:          Optional[float] = None
-    P_emaildomain:  Optional[str] = None
-    R_emaildomain:  Optional[str] = None
-    TransactionDT:  Optional[int] = None
+    ProductCD: Optional[str] = Field(None, description="Product code")
+    card1: Optional[int] = None
+    card2: Optional[float] = None
+    card3: Optional[float] = None
+    card4: Optional[str] = None
+    card5: Optional[float] = None
+    card6: Optional[str] = None
+    addr1: Optional[float] = None
+    addr2: Optional[float] = None
+    dist1: Optional[float] = None
+    P_emaildomain: Optional[str] = None
+    R_emaildomain: Optional[str] = None
+    TransactionDT: Optional[int] = None
     # Allow extra fields for V, C, D, M features
+
     class Config:
         extra = "allow"
 
@@ -164,12 +164,12 @@ class TransactionFeatures(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    transaction_id:   Optional[str] = None
-    is_fraud:         bool
+    transaction_id: Optional[str] = None
+    is_fraud: bool
     fraud_probability: float
-    confidence:       str    # HIGH / MEDIUM / LOW
-    threshold:        float
-    model_version:    str
+    confidence: str    # HIGH / MEDIUM / LOW
+    threshold: float
+    model_version: str
     processing_time_ms: float
 
 
@@ -179,7 +179,7 @@ class BatchRequest(BaseModel):
 
 class BatchResponse(BaseModel):
     predictions: list[PredictionResponse]
-    batch_size:  int
+    batch_size: int
     total_time_ms: float
 
 
@@ -198,7 +198,7 @@ def preprocess_transaction(data: dict) -> pd.DataFrame:
     # Time features
     if "TransactionDT" in df.columns:
         df["transaction_hour"] = (df["TransactionDT"] / 3600) % 24
-        df["transaction_day"]  = (df["TransactionDT"] / 86400) % 7
+        df["transaction_day"] = (df["TransactionDT"] / 86400) % 7
 
     # Encode object columns
     for col in df.select_dtypes(include="object").columns:
@@ -278,7 +278,7 @@ async def metrics():
 @app.get("/model/info")
 async def model_info():
     return {
-        "version":   model_manager.version,
+        "version": model_manager.version,
         "threshold": model_manager.threshold,
         "n_features": len(model_manager.feature_cols) if model_manager.feature_cols else "unknown",
     }
@@ -286,7 +286,7 @@ async def model_info():
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: TransactionFeatures):
-    start = time.time()
+    time.time()
     REQUEST_COUNT.labels(method="POST", endpoint="/predict", status_code="200").inc()
 
     with REQUEST_LATENCY.labels(endpoint="/predict").time():

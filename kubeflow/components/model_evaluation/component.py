@@ -5,6 +5,12 @@ Produces: full metrics, confusion matrix, ROC/PR curves, business impact analysi
 Conditional deployment: only passes if AUC-ROC >= threshold.
 """
 
+from sklearn.metrics import (
+    roc_auc_score, roc_curve, precision_recall_curve,
+    f1_score, precision_score, recall_score,
+    confusion_matrix, average_precision_score, classification_report
+)
+import matplotlib.pyplot as plt
 import argparse
 import json
 import logging
@@ -15,20 +21,14 @@ import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from sklearn.metrics import (
-    roc_auc_score, roc_curve, precision_recall_curve,
-    f1_score, precision_score, recall_score,
-    confusion_matrix, average_precision_score, classification_report
-)
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # Deployment thresholds
-MIN_AUC_ROC   = 0.85
-MIN_RECALL    = 0.75
+MIN_AUC_ROC = 0.85
+MIN_RECALL = 0.75
 MIN_PRECISION = 0.20   # Fraud detection: recall > precision
 
 
@@ -37,8 +37,8 @@ MIN_PRECISION = 0.20   # Fraud detection: recall > precision
 # ============================================================
 
 def business_impact(y_true, y_pred, y_prob,
-                     avg_fraud_amount: float = 500.0,
-                     review_cost: float = 10.0) -> dict:
+                    avg_fraud_amount: float = 500.0,
+                    review_cost: float = 10.0) -> dict:
     """
     Compute financial impact:
     - FN (missed fraud): avg_fraud_amount per case lost
@@ -47,9 +47,9 @@ def business_impact(y_true, y_pred, y_prob,
     cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = cm.ravel()
 
-    fraud_loss_standard  = fn * avg_fraud_amount   # FN * loss per fraud
-    false_alarm_cost     = fp * review_cost         # FP * cost per review
-    total_cost_standard  = fraud_loss_standard + false_alarm_cost
+    fraud_loss_standard = fn * avg_fraud_amount   # FN * loss per fraud
+    false_alarm_cost = fp * review_cost         # FP * cost per review
+    total_cost_standard = fraud_loss_standard + false_alarm_cost
 
     # Perfect detector baseline
     total_fraud_amount = int(y_true.sum()) * avg_fraud_amount
@@ -58,18 +58,18 @@ def business_impact(y_true, y_pred, y_prob,
     savings = (int(y_true.sum()) - fn) * avg_fraud_amount  # avoided fraud losses
 
     return {
-        "avg_fraud_amount":    avg_fraud_amount,
-        "review_cost_per_fp":  review_cost,
-        "true_positives":      int(tp),
-        "false_positives":     int(fp),
-        "true_negatives":      int(tn),
-        "false_negatives":     int(fn),
-        "missed_fraud_loss":   float(fraud_loss_standard),
-        "false_alarm_cost":    float(false_alarm_cost),
-        "total_cost":          float(total_cost_standard),
-        "fraud_savings":       float(savings),
+        "avg_fraud_amount": avg_fraud_amount,
+        "review_cost_per_fp": review_cost,
+        "true_positives": int(tp),
+        "false_positives": int(fp),
+        "true_negatives": int(tn),
+        "false_negatives": int(fn),
+        "missed_fraud_loss": float(fraud_loss_standard),
+        "false_alarm_cost": float(false_alarm_cost),
+        "total_cost": float(total_cost_standard),
+        "fraud_savings": float(savings),
         "total_fraud_in_test": float(total_fraud_amount),
-        "net_value":           float(savings - false_alarm_cost),
+        "net_value": float(savings - false_alarm_cost),
     }
 
 
@@ -126,7 +126,7 @@ def plot_confusion_matrix(cm: np.ndarray, output_path: str) -> None:
 def plot_confidence_distribution(y_true, y_prob, output_path: str) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.hist(y_prob[y_true == 0], bins=50, alpha=0.6, label="Non-Fraud", color="blue", density=True)
-    ax.hist(y_prob[y_true == 1], bins=50, alpha=0.6, label="Fraud",     color="red",  density=True)
+    ax.hist(y_prob[y_true == 1], bins=50, alpha=0.6, label="Fraud", color="red", density=True)
     ax.set_xlabel("Predicted Probability (Fraud)")
     ax.set_ylabel("Density")
     ax.set_title("Prediction Confidence Distribution")
@@ -148,9 +148,9 @@ def evaluate(model_dir: str, data_dir: str, output_dir: str,
     # Load model
     model_path = os.path.join(model_dir, "best_model.joblib")
     artifact = joblib.load(model_path)
-    model     = artifact["model"]
+    model = artifact["model"]
     threshold = artifact.get("threshold", 0.5)
-    selector  = artifact.get("selector", None)
+    selector = artifact.get("selector", None)
 
     # Load test data
     X_test = pd.read_parquet(os.path.join(data_dir, "X_test.parquet"))
@@ -167,12 +167,12 @@ def evaluate(model_dir: str, data_dir: str, output_dir: str,
     y_pred = (y_prob >= threshold).astype(int)
 
     # Core metrics
-    auc_roc   = roc_auc_score(y_test, y_prob)
-    auc_pr    = average_precision_score(y_test, y_prob)
-    f1        = f1_score(y_test, y_pred, zero_division=0)
+    auc_roc = roc_auc_score(y_test, y_prob)
+    auc_pr = average_precision_score(y_test, y_prob)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
     precision = precision_score(y_test, y_pred, zero_division=0)
-    recall    = recall_score(y_test, y_pred, zero_division=0)
-    cm        = confusion_matrix(y_test, y_pred)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+    cm = confusion_matrix(y_test, y_pred)
 
     logger.info(f"Test AUC-ROC:   {auc_roc:.4f}")
     logger.info(f"Test AUC-PR:    {auc_pr:.4f}")
@@ -187,10 +187,9 @@ def evaluate(model_dir: str, data_dir: str, output_dir: str,
     # Standard vs cost-sensitive comparison
     # (load training metrics for comparison)
     train_metrics_path = os.path.join(model_dir, "..", "training_metrics.json")
-    training_comparison = {}
     if os.path.exists(train_metrics_path):
         with open(train_metrics_path) as f:
-            training_comparison = json.load(f)
+            json.load(f)
 
     # Deploy decision
     deploy = (auc_roc >= MIN_AUC_ROC and recall >= MIN_RECALL)
@@ -205,20 +204,20 @@ def evaluate(model_dir: str, data_dir: str, output_dir: str,
     plot_pr_curve(y_test, y_prob, os.path.join(output_dir, "pr_curve.png"))
     plot_confusion_matrix(cm, os.path.join(output_dir, "confusion_matrix.png"))
     plot_confidence_distribution(y_test.values, y_prob,
-                                  os.path.join(output_dir, "confidence_dist.png"))
+                                 os.path.join(output_dir, "confidence_dist.png"))
 
     # Save full eval metrics
     eval_metrics = {
-        "auc_roc":   auc_roc,
-        "auc_pr":    auc_pr,
-        "f1":        f1,
+        "auc_roc": auc_roc,
+        "auc_pr": auc_pr,
+        "f1": f1,
         "precision": precision,
-        "recall":    recall,
+        "recall": recall,
         "threshold": threshold,
         "confusion_matrix": cm.tolist(),
-        "business_impact":  impact,
-        "deploy":           deploy,
-        "deploy_reasons":   deploy_reason,
+        "business_impact": impact,
+        "deploy": deploy,
+        "deploy_reasons": deploy_reason,
     }
     with open(eval_metrics_path, "w") as f:
         json.dump(eval_metrics, f, indent=2)
@@ -233,10 +232,10 @@ def evaluate(model_dir: str, data_dir: str, output_dir: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-dir",          type=str, required=True)
-    parser.add_argument("--data-dir",           type=str, required=True)
-    parser.add_argument("--output-dir",         type=str, required=True)
-    parser.add_argument("--eval-metrics-path",  type=str, required=True)
+    parser.add_argument("--model-dir", type=str, required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--output-dir", type=str, required=True)
+    parser.add_argument("--eval-metrics-path", type=str, required=True)
     parser.add_argument("--deploy-decision-path", type=str, required=True)
     args = parser.parse_args()
 

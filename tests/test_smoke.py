@@ -1,14 +1,13 @@
+from src.monitoring.drift_detection import ThresholdBasedRetraining
+from src.data.quality_checks import run_quality_checks
+from kubeflow.components.model_evaluation.component import business_impact
+from kubeflow.components.data_preprocessing.component import basic_feature_engineering
 import numpy as np
 import pandas as pd
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from kubeflow.components.data_preprocessing.component import basic_feature_engineering
-from kubeflow.components.model_evaluation.component import business_impact
-from src.data.quality_checks import run_quality_checks
-from src.monitoring.drift_detection import ThresholdBasedRetraining
 
 
 def test_basic_feature_engineering_adds_columns():

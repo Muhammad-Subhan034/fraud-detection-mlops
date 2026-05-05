@@ -122,8 +122,8 @@ def validate_data(input_path: str, output_report_path: str, validation_status_pa
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-path",             type=str, required=True)
-    parser.add_argument("--output-report-path",     type=str, required=True)
+    parser.add_argument("--input-path", type=str, required=True)
+    parser.add_argument("--output-report-path", type=str, required=True)
     parser.add_argument("--validation-status-path", type=str, required=True)
     args = parser.parse_args()
 

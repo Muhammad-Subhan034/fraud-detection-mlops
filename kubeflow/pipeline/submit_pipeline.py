@@ -4,18 +4,14 @@ Assembles all 7 components with retry logic and conditional deployment.
 """
 
 import kfp
-from kfp import dsl
 from kfp.dsl import (
     component, pipeline, Input, Output,
-    Dataset, Model, Metrics, Artifact,
-    ContainerSpec
+    Dataset, Model, Metrics, Artifact
 )
-from typing import NamedTuple
-import os
 
 # ---- Container image (build with Dockerfile.pipeline) ----
 BASE_IMAGE = "fraud-detection/pipeline:latest"
-NAMESPACE   = "fraud-detection"
+NAMESPACE = "fraud-detection"
 
 
 # ============================================================
@@ -28,115 +24,126 @@ def data_ingestion_op(
     output_data: Output[Dataset],
     output_stats: Output[Artifact],
 ) -> None:
-    import subprocess, sys
+    import subprocess
+    import sys
     result = subprocess.run([
         sys.executable, "/app/components/data_ingestion/component.py",
-        "--data-dir",    data_dir,
+        "--data-dir", data_dir,
         "--output-path", output_data.path,
-        "--stats-path",  output_stats.path,
+        "--stats-path", output_stats.path,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def data_validation_op(
-    input_data:        Input[Dataset],
+    input_data: Input[Dataset],
     validation_report: Output[Artifact],
     validation_status: Output[Artifact],
 ) -> None:
-    import subprocess, sys
+    import subprocess
+    import sys
     subprocess.run([
         sys.executable, "/app/components/data_validation/component.py",
-        "--input-path",             input_data.path,
-        "--output-report-path",     validation_report.path,
+        "--input-path", input_data.path,
+        "--output-report-path", validation_report.path,
         "--validation-status-path", validation_status.path,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def data_preprocessing_op(
-    input_data:    Input[Dataset],
-    output_dir:    Output[Dataset],
-    encoders:      Output[Model],
-    stats:         Output[Artifact],
+    input_data: Input[Dataset],
+    output_dir: Output[Dataset],
+    encoders: Output[Model],
+    stats: Output[Artifact],
 ) -> None:
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     os.makedirs(output_dir.path, exist_ok=True)
     subprocess.run([
         sys.executable, "/app/components/data_preprocessing/component.py",
-        "--input-path",   input_data.path,
-        "--output-dir",   output_dir.path,
+        "--input-path", input_data.path,
+        "--output-dir", output_dir.path,
         "--encoder-path", encoders.path,
-        "--stats-path",   stats.path,
+        "--stats-path", stats.path,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def feature_engineering_op(
-    data_dir:         Input[Dataset],
-    output_dir:       Output[Dataset],
+    data_dir: Input[Dataset],
+    output_dir: Output[Dataset],
     feature_metadata: Output[Artifact],
 ) -> None:
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     os.makedirs(output_dir.path, exist_ok=True)
     subprocess.run([
         sys.executable, "/app/components/feature_engineering/component.py",
-        "--data-dir",          data_dir.path,
-        "--output-dir",        output_dir.path,
+        "--data-dir", data_dir.path,
+        "--output-dir", output_dir.path,
         "--feature-meta-path", feature_metadata.path,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def model_training_op(
-    data_dir:       Input[Dataset],
-    model_dir:      Output[Model],
-    metrics:        Output[Metrics],
-    mlflow_uri:     str = "http://mlflow-service:5000",
+    data_dir: Input[Dataset],
+    model_dir: Output[Model],
+    metrics: Output[Metrics],
+    mlflow_uri: str = "http://mlflow-service:5000",
 ) -> None:
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     os.makedirs(model_dir.path, exist_ok=True)
     subprocess.run([
         sys.executable, "/app/components/model_training/component.py",
-        "--data-dir",     data_dir.path,
-        "--output-dir",   model_dir.path,
+        "--data-dir", data_dir.path,
+        "--output-dir", model_dir.path,
         "--metrics-path", metrics.path,
-        "--mlflow-uri",   mlflow_uri,
+        "--mlflow-uri", mlflow_uri,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def model_evaluation_op(
-    model_dir:        Input[Model],
-    data_dir:         Input[Dataset],
-    eval_output_dir:  Output[Dataset],
-    eval_metrics:     Output[Metrics],
-    deploy_decision:  Output[Artifact],
+    model_dir: Input[Model],
+    data_dir: Input[Dataset],
+    eval_output_dir: Output[Dataset],
+    eval_metrics: Output[Metrics],
+    deploy_decision: Output[Artifact],
 ) -> None:
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     os.makedirs(eval_output_dir.path, exist_ok=True)
     subprocess.run([
         sys.executable, "/app/components/model_evaluation/component.py",
-        "--model-dir",           model_dir.path,
-        "--data-dir",            data_dir.path,
-        "--output-dir",          eval_output_dir.path,
-        "--eval-metrics-path",   eval_metrics.path,
+        "--model-dir", model_dir.path,
+        "--data-dir", data_dir.path,
+        "--output-dir", eval_output_dir.path,
+        "--eval-metrics-path", eval_metrics.path,
         "--deploy-decision-path", deploy_decision.path,
     ], check=True)
 
 
 @component(base_image=BASE_IMAGE)
 def conditional_deployment_op(
-    model_dir:         Input[Model],
-    eval_metrics:      Input[Metrics],
-    deploy_decision:   Input[Artifact],
+    model_dir: Input[Model],
+    eval_metrics: Input[Metrics],
+    deploy_decision: Input[Artifact],
     deployment_status: Output[Artifact],
 ) -> None:
-    import subprocess, sys
+    import subprocess
+    import sys
     subprocess.run([
         sys.executable, "/app/components/deployment/component.py",
-        "--model-dir",              model_dir.path,
-        "--eval-metrics-path",      eval_metrics.path,
-        "--deploy-decision-path",   deploy_decision.path,
+        "--model-dir", model_dir.path,
+        "--eval-metrics-path", eval_metrics.path,
+        "--deploy-decision-path", deploy_decision.path,
         "--deployment-status-path", deployment_status.path,
     ], check=True)
 
@@ -150,7 +157,7 @@ def conditional_deployment_op(
     description="IEEE CIS Fraud Detection: Full MLOps pipeline with conditional deployment",
 )
 def fraud_detection_pipeline(
-    data_dir:   str = "/mnt/data/raw",
+    data_dir: str = "/mnt/data/raw",
     mlflow_uri: str = "http://mlflow-service.fraud-detection.svc.cluster.local:5000",
 ):
     # ---- Step 1: Data Ingestion ----
@@ -222,9 +229,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host",      default="http://localhost:8080", help="Kubeflow UI URL")
-    parser.add_argument("--data-dir",  default="/mnt/data/raw")
-    parser.add_argument("--mlflow",    default="http://mlflow-service.fraud-detection.svc.cluster.local:5000")
+    parser.add_argument("--host", default="http://localhost:8080", help="Kubeflow UI URL")
+    parser.add_argument("--data-dir", default="/mnt/data/raw")
+    parser.add_argument("--mlflow", default="http://mlflow-service.fraud-detection.svc.cluster.local:5000")
     parser.add_argument("--compile-only", action="store_true")
     args = parser.parse_args()
 
@@ -240,7 +247,7 @@ if __name__ == "__main__":
         run = client.create_run_from_pipeline_func(
             fraud_detection_pipeline,
             arguments={
-                "data_dir":   args.data_dir,
+                "data_dir": args.data_dir,
                 "mlflow_uri": args.mlflow,
             },
             run_name="fraud-detection-run-v1",

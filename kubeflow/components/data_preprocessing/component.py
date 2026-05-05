@@ -14,7 +14,6 @@ import warnings
 import joblib
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import category_encoders as ce
@@ -34,7 +33,7 @@ MISSING_THRESHOLD = 0.90          # Drop columns with >90% missing
 # ============================================================
 
 def handle_missing_values(df: pd.DataFrame, is_train: bool = True,
-                           fill_values: dict = None) -> tuple[pd.DataFrame, dict]:
+                          fill_values: dict = None) -> tuple[pd.DataFrame, dict]:
     """
     Advanced missing value handling:
     - Drop columns with >90% missing
@@ -96,7 +95,7 @@ def basic_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     # Transaction hour (TransactionDT is seconds from a reference)
     if "TransactionDT" in df.columns:
         df["transaction_hour"] = (df["TransactionDT"] / 3600) % 24
-        df["transaction_day"]  = (df["TransactionDT"] / 86400) % 7
+        df["transaction_day"] = (df["TransactionDT"] / 86400) % 7
         df["transaction_week"] = (df["TransactionDT"] / 604800).astype(int)
 
     # Transaction amount log transform
@@ -113,8 +112,8 @@ def basic_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def encode_categoricals(X_train: pd.DataFrame, y_train: pd.Series,
-                         X_val: pd.DataFrame, X_test: pd.DataFrame,
-                         encoders: dict = None) -> tuple:
+                        X_val: pd.DataFrame, X_test: pd.DataFrame,
+                        encoders: dict = None) -> tuple:
     """
     - Low-cardinality (<= threshold): Label encoding
     - High-cardinality (> threshold): Target encoding (uses y on train only)
@@ -149,8 +148,8 @@ def encode_categoricals(X_train: pd.DataFrame, y_train: pd.Series,
             encoders["target_encoder"] = te
         te = encoders["target_encoder"]
         X_train[high_card] = te.transform(X_train[high_card])
-        X_val[high_card]   = te.transform(X_val[high_card])
-        X_test[high_card]  = te.transform(X_test[high_card])
+        X_val[high_card] = te.transform(X_val[high_card])
+        X_test[high_card] = te.transform(X_test[high_card])
 
     return X_train, X_val, X_test, encoders
 
@@ -176,10 +175,10 @@ def preprocess(input_path: str, output_dir: str, encoder_path: str, stats_path: 
         df = df.sort_values("TransactionDT").reset_index(drop=True)
         n = len(df)
         train_end = int(n * 0.70)
-        val_end   = int(n * 0.85)
-        train_df  = df.iloc[:train_end]
-        val_df    = df.iloc[train_end:val_end]
-        test_df   = df.iloc[val_end:]
+        val_end = int(n * 0.85)
+        train_df = df.iloc[:train_end]
+        val_df = df.iloc[train_end:val_end]
+        test_df = df.iloc[val_end:]
         logger.info("Using time-based split")
     else:
         train_df, temp = train_test_split(df, test_size=0.30, random_state=42, stratify=df[TARGET])
@@ -189,23 +188,23 @@ def preprocess(input_path: str, output_dir: str, encoder_path: str, stats_path: 
 
     # Handle missing values
     train_df, fill_values = handle_missing_values(train_df, is_train=True)
-    val_df,  _            = handle_missing_values(val_df,  is_train=False, fill_values=fill_values)
-    test_df, _            = handle_missing_values(test_df, is_train=False, fill_values=fill_values)
+    val_df, _ = handle_missing_values(val_df, is_train=False, fill_values=fill_values)
+    test_df, _ = handle_missing_values(test_df, is_train=False, fill_values=fill_values)
 
     # Separate features and target
     X_train = train_df.drop(columns=[TARGET])
     y_train = train_df[TARGET]
-    X_val   = val_df.drop(columns=[TARGET])
-    y_val   = val_df[TARGET]
-    X_test  = test_df.drop(columns=[TARGET])
-    y_test  = test_df[TARGET]
+    X_val = val_df.drop(columns=[TARGET])
+    y_val = val_df[TARGET]
+    X_test = test_df.drop(columns=[TARGET])
+    y_test = test_df[TARGET]
 
     # Encode categoricals
     X_train, X_val, X_test, encoders = encode_categoricals(X_train, y_train, X_val, X_test)
 
     # Align columns across splits
     feature_cols = list(X_train.columns)
-    X_val  = X_val.reindex(columns=feature_cols, fill_value=0)
+    X_val = X_val.reindex(columns=feature_cols, fill_value=0)
     X_test = X_test.reindex(columns=feature_cols, fill_value=0)
 
     # Save splits
@@ -236,10 +235,10 @@ def preprocess(input_path: str, output_dir: str, encoder_path: str, stats_path: 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-path",   type=str, required=True)
-    parser.add_argument("--output-dir",   type=str, required=True)
+    parser.add_argument("--input-path", type=str, required=True)
+    parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--encoder-path", type=str, required=True)
-    parser.add_argument("--stats-path",   type=str, required=True)
+    parser.add_argument("--stats-path", type=str, required=True)
     args = parser.parse_args()
 
     preprocess(args.input_path, args.output_dir, args.encoder_path, args.stats_path)

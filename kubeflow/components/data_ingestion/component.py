@@ -10,7 +10,6 @@ import os
 import logging
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -68,9 +67,9 @@ def ingest_data(data_dir: str, output_path: str, stats_path: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir",    type=str, required=True,  help="Directory containing raw CSVs")
-    parser.add_argument("--output-path", type=str, required=True,  help="Output parquet path")
-    parser.add_argument("--stats-path",  type=str, required=True,  help="Output JSON stats path")
+    parser.add_argument("--data-dir", type=str, required=True, help="Directory containing raw CSVs")
+    parser.add_argument("--output-path", type=str, required=True, help="Output parquet path")
+    parser.add_argument("--stats-path", type=str, required=True, help="Output JSON stats path")
     args = parser.parse_args()
 
     ingest_data(args.data_dir, args.output_path, args.stats_path)

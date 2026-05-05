@@ -19,14 +19,12 @@ import joblib
 import numpy as np
 import pandas as pd
 import mlflow
-from pathlib import Path
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectFromModel
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.metrics import (
     roc_auc_score, f1_score, precision_score,
     recall_score, confusion_matrix, average_precision_score
@@ -100,7 +98,7 @@ def build_lightgbm(scale_pos_weight: float = 1.0, cost_sensitive: bool = False) 
 
 
 def build_hybrid_rf_xgb(X_train: pd.DataFrame, y_train: pd.Series,
-                         scale_pos_weight: float) -> tuple:
+                        scale_pos_weight: float) -> tuple:
     """
     Hybrid: RandomForest feature selection → XGBoost on selected features.
     Returns (fitted_model, selected_feature_names)
@@ -140,12 +138,12 @@ def compute_metrics(y_true, y_prob, threshold: float = 0.5) -> dict:
     fpr = fp / (fp + tn + 1e-8)
 
     return {
-        "auc_roc":   float(roc_auc_score(y_true, y_prob)),
-        "auc_pr":    float(average_precision_score(y_true, y_prob)),
-        "f1":        float(f1_score(y_true, y_pred, zero_division=0)),
+        "auc_roc": float(roc_auc_score(y_true, y_prob)),
+        "auc_pr": float(average_precision_score(y_true, y_prob)),
+        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
-        "recall":    float(recall_score(y_true, y_pred, zero_division=0)),
-        "fpr":       float(fpr),
+        "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "fpr": float(fpr),
         "tp": int(tp), "fp": int(fp), "tn": int(tn), "fn": int(fn),
         "confusion_matrix": cm.tolist(),
         "threshold": threshold,
@@ -171,14 +169,14 @@ def find_best_threshold(y_true, y_prob, min_recall: float = FRAUD_RECALL_THRESHO
 # ============================================================
 
 def run_all_experiments(data_dir: str, output_dir: str, metrics_path: str,
-                         mlflow_uri: str = "mlflow") -> None:
+                        mlflow_uri: str = "mlflow") -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     # Load data
     X_train = pd.read_parquet(os.path.join(data_dir, "X_train.parquet"))
     y_train = pd.read_parquet(os.path.join(data_dir, "y_train.parquet")).squeeze()
-    X_val   = pd.read_parquet(os.path.join(data_dir, "X_val.parquet"))
-    y_val   = pd.read_parquet(os.path.join(data_dir, "y_val.parquet")).squeeze()
+    X_val = pd.read_parquet(os.path.join(data_dir, "X_val.parquet"))
+    y_val = pd.read_parquet(os.path.join(data_dir, "y_val.parquet")).squeeze()
 
     logger.info(f"Train: {X_train.shape}, fraud: {y_train.mean():.4f}")
 
@@ -194,12 +192,12 @@ def run_all_experiments(data_dir: str, output_dir: str, metrics_path: str,
 
     experiments = [
         # (name, model, X, y, description)
-        ("xgb_class_weight",        build_xgboost(spw, False),  X_train,       y_train,       "XGBoost + class weight"),
-        ("xgb_smote",               build_xgboost(1.0, False),  X_train_smote, y_train_smote, "XGBoost + SMOTE"),
-        ("xgb_cost_sensitive",      build_xgboost(spw, True),   X_train,       y_train,       "XGBoost + cost-sensitive"),
-        ("lgbm_class_weight",       build_lightgbm(spw, False), X_train,       y_train,       "LightGBM + class weight"),
-        ("lgbm_smote",              build_lightgbm(1.0, False), X_train_smote, y_train_smote, "LightGBM + SMOTE"),
-        ("lgbm_cost_sensitive",     build_lightgbm(spw, True),  X_train,       y_train,       "LightGBM + cost-sensitive"),
+        ("xgb_class_weight", build_xgboost(spw, False), X_train, y_train, "XGBoost + class weight"),
+        ("xgb_smote", build_xgboost(1.0, False), X_train_smote, y_train_smote, "XGBoost + SMOTE"),
+        ("xgb_cost_sensitive", build_xgboost(spw, True), X_train, y_train, "XGBoost + cost-sensitive"),
+        ("lgbm_class_weight", build_lightgbm(spw, False), X_train, y_train, "LightGBM + class weight"),
+        ("lgbm_smote", build_lightgbm(1.0, False), X_train_smote, y_train_smote, "LightGBM + SMOTE"),
+        ("lgbm_cost_sensitive", build_lightgbm(spw, True), X_train, y_train, "LightGBM + cost-sensitive"),
     ]
 
     for exp_name, model, X_tr, y_tr, description in experiments:
@@ -216,7 +214,7 @@ def run_all_experiments(data_dir: str, output_dir: str, metrics_path: str,
             metrics["description"] = description
 
             mlflow.log_metrics({k: v for k, v in metrics.items()
-                                 if isinstance(v, (int, float))})
+                                if isinstance(v, (int, float))})
             mlflow.log_param("experiment", exp_name)
 
             all_results[exp_name] = metrics
@@ -268,10 +266,10 @@ def run_all_experiments(data_dir: str, output_dir: str, metrics_path: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir",    type=str, required=True)
-    parser.add_argument("--output-dir",  type=str, required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--metrics-path", type=str, required=True)
-    parser.add_argument("--mlflow-uri",  type=str, default="http://mlflow:5000")
+    parser.add_argument("--mlflow-uri", type=str, default="http://mlflow:5000")
     args = parser.parse_args()
 
     run_all_experiments(args.data_dir, args.output_dir, args.metrics_path, args.mlflow_uri)

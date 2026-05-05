@@ -11,7 +11,6 @@ Deploy as the `alert-webhook` Docker Compose service (port 5001).
 """
 
 import os
-import json
 import time
 import logging
 from datetime import datetime, timezone
@@ -31,11 +30,11 @@ logging.basicConfig(
 logger = logging.getLogger("alert-webhook")
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO   = os.environ.get("GITHUB_REPO", "Muhammad-Subhan034/fraud-detection-mlops")
-GITHUB_REF    = os.environ.get("GITHUB_REF", "main")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "Muhammad-Subhan034/fraud-detection-mlops")
+GITHUB_REF = os.environ.get("GITHUB_REF", "main")
 WORKFLOW_FILE = "fraud-detection-cicd.yml"
-GITHUB_API    = (
+GITHUB_API = (
     f"https://api.github.com/repos/{GITHUB_REPO}"
     f"/actions/workflows/{WORKFLOW_FILE}/dispatches"
 )
@@ -78,14 +77,14 @@ LAST_ALERT_TIMESTAMP = Gauge(
 # ── Alert parsing ─────────────────────────────────────────────────────────────
 # Maps Prometheus alertname patterns → workflow_dispatch trigger_reason values
 ALERT_REASON_MAP = {
-    "FraudRecallCritical":    "recall_drop",
-    "FraudRecallWarning":     "recall_drop",
-    "DataDriftCritical":      "drift_alert",
-    "DataDriftDetected":      "drift_alert",
+    "FraudRecallCritical": "recall_drop",
+    "FraudRecallWarning": "recall_drop",
+    "DataDriftCritical": "drift_alert",
+    "DataDriftDetected": "drift_alert",
     "LowConfidencePredictions": "performance_degradation",
-    "APILatencyCritical":     "performance_degradation",
-    "APIHighErrorRate":       "performance_degradation",
-    "FraudAPIDown":           "performance_degradation",
+    "APILatencyCritical": "performance_degradation",
+    "APIHighErrorRate": "performance_degradation",
+    "FraudAPIDown": "performance_degradation",
 }
 
 
@@ -116,7 +115,7 @@ def parse_alert_payload(payload: dict) -> dict:
         if alert.get("status") != "firing":
             continue
 
-        name  = alert.get("labels", {}).get("alertname", "")
+        name = alert.get("labels", {}).get("alertname", "")
         value = alert.get("annotations", {}).get("value", "")
         result["alert_names"].append(name)
 
@@ -144,8 +143,8 @@ def parse_alert_payload(payload: dict) -> dict:
 
 # ── GitHub dispatch ───────────────────────────────────────────────────────────
 def dispatch_github_workflow(trigger_reason: str,
-                              current_recall: float = None,
-                              drift_score: float = None) -> bool:
+                             current_recall: float = None,
+                             drift_score: float = None) -> bool:
     """Call GitHub Actions workflow_dispatch API. Returns True on success."""
     inputs = {"trigger_reason": trigger_reason}
     if current_recall is not None:
@@ -156,7 +155,7 @@ def dispatch_github_workflow(trigger_reason: str,
     payload = {"ref": GITHUB_REF, "inputs": inputs}
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept":        "application/vnd.github+json",
+        "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
@@ -198,10 +197,10 @@ def dispatch_github_workflow(trigger_reason: str,
 @app.get("/health")
 def health():
     return jsonify({
-        "status":         "ok",
+        "status": "ok",
         "local_dev_mode": LOCAL_DEV_MODE,
-        "github_repo":    GITHUB_REPO,
-        "timestamp":      datetime.now(timezone.utc).isoformat(),
+        "github_repo": GITHUB_REPO,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
@@ -209,11 +208,11 @@ def health():
 def status():
     """Returns current configuration summary (no secrets exposed)."""
     return jsonify({
-        "mode":           "local-dev" if LOCAL_DEV_MODE else "production",
-        "github_repo":    GITHUB_REPO,
-        "github_ref":     GITHUB_REF,
-        "workflow_file":  WORKFLOW_FILE,
-        "alert_map":      list(ALERT_REASON_MAP.keys()),
+        "mode": "local-dev" if LOCAL_DEV_MODE else "production",
+        "github_repo": GITHUB_REPO,
+        "github_ref": GITHUB_REF,
+        "workflow_file": WORKFLOW_FILE,
+        "alert_map": list(ALERT_REASON_MAP.keys()),
     })
 
 
@@ -262,12 +261,12 @@ def receive_alert():
         )
         GITHUB_DISPATCHES.labels(status="skipped").inc()
         return jsonify({
-            "dispatched":  False,
-            "reason":      "local_dev_mode",
-            "would_send":  {
+            "dispatched": False,
+            "reason": "local_dev_mode",
+            "would_send": {
                 "trigger_reason": trigger_reason,
                 "current_recall": alert_info["current_recall"],
-                "drift_score":    alert_info["drift_score"],
+                "drift_score": alert_info["drift_score"],
             },
         }), 200
 
@@ -279,14 +278,14 @@ def receive_alert():
 
     if success:
         return jsonify({
-            "dispatched":     True,
+            "dispatched": True,
             "trigger_reason": trigger_reason,
-            "alert_names":    alert_names,
+            "alert_names": alert_names,
         }), 200
     else:
         return jsonify({
             "dispatched": False,
-            "error":      "GitHub API call failed — see logs",
+            "error": "GitHub API call failed — see logs",
         }), 500
 
 

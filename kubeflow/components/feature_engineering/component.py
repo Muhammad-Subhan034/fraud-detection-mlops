@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import warnings
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -26,10 +25,10 @@ def aggregate_v_features(df: pd.DataFrame) -> pd.DataFrame:
     if not v_cols:
         return df
 
-    df["v_mean"]    = df[v_cols].mean(axis=1)
-    df["v_std"]     = df[v_cols].std(axis=1)
-    df["v_max"]     = df[v_cols].max(axis=1)
-    df["v_min"]     = df[v_cols].min(axis=1)
+    df["v_mean"] = df[v_cols].mean(axis=1)
+    df["v_std"] = df[v_cols].std(axis=1)
+    df["v_max"] = df[v_cols].max(axis=1)
+    df["v_min"] = df[v_cols].min(axis=1)
     df["v_missing"] = df[v_cols].isnull().sum(axis=1)
     df["v_nonzero"] = (df[v_cols] != 0).sum(axis=1)
     logger.info(f"Created V-feature aggregates from {len(v_cols)} cols")
@@ -80,7 +79,7 @@ def d_feature_diff(df: pd.DataFrame) -> pd.DataFrame:
     d_cols = [c for c in df.columns if c.startswith("D")]
     if len(d_cols) >= 2:
         df["D_range"] = df[d_cols].max(axis=1) - df[d_cols].min(axis=1)
-        df["D_mean"]  = df[d_cols].mean(axis=1)
+        df["D_mean"] = df[d_cols].mean(axis=1)
     return df
 
 
@@ -134,8 +133,8 @@ def engineer_features(data_dir: str, output_dir: str, feature_meta_path: str) ->
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir",          type=str, required=True)
-    parser.add_argument("--output-dir",        type=str, required=True)
+    parser.add_argument("--data-dir", type=str, required=True)
+    parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--feature-meta-path", type=str, required=True)
     args = parser.parse_args()
 

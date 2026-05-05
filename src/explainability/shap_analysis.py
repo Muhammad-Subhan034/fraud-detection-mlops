@@ -6,6 +6,7 @@ Task 9: Explainability using SHAP
 - Waterfall plots for individual predictions
 """
 
+import matplotlib.pyplot as plt
 import os
 import logging
 import warnings
@@ -15,7 +16,6 @@ import pandas as pd
 import shap
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class FraudExplainer:
     def __init__(self, model_artifact_path: str):
         artifact = joblib.load(model_artifact_path)
-        self.model     = artifact["model"]
+        self.model = artifact["model"]
         self.threshold = artifact.get("threshold", 0.5)
-        self.selector  = artifact.get("selector", None)
+        self.selector = artifact.get("selector", None)
         self.explainer = None
         self.model_type = type(self.model).__name__
         logger.info(f"Loaded {self.model_type} for explanation")
@@ -90,7 +90,7 @@ class FraudExplainer:
         shap_values, X_used = self.compute_shap_values(X)
         mean_abs = np.abs(shap_values).mean(axis=0)
         feature_names = list(X_used.columns) if hasattr(X_used, "columns") else \
-                        [f"f{i}" for i in range(X_used.shape[1])]
+            [f"f{i}" for i in range(X_used.shape[1])]
 
         importance_df = pd.DataFrame({
             "feature": feature_names,
@@ -163,7 +163,7 @@ class FraudExplainer:
         """SHAP dependence plot for a specific feature."""
         shap_values, X_used = self.compute_shap_values(X)
         feature_names = list(X_used.columns) if hasattr(X_used, "columns") else \
-                        [f"f{i}" for i in range(X_used.shape[1])]
+            [f"f{i}" for i in range(X_used.shape[1])]
         if feature not in feature_names:
             logger.warning(f"Feature {feature} not found")
             return
@@ -242,9 +242,9 @@ def run_explainability_analysis(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path",  required=True)
-    parser.add_argument("--data-dir",    required=True)
-    parser.add_argument("--output-dir",  required=True)
+    parser.add_argument("--model-path", required=True)
+    parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
 
     run_explainability_analysis(args.model_path, args.data_dir, args.output_dir)

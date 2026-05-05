@@ -7,16 +7,11 @@ Task 7 & 8: Drift Simulation + Intelligent Retraining
 - Comparison of retraining strategies
 """
 
-import os
-import json
-import time
 import logging
 import warnings
 import numpy as np
 import pandas as pd
-import joblib
 from datetime import datetime
-from typing import Optional
 from scipy import stats
 
 warnings.filterwarnings("ignore")
@@ -42,7 +37,7 @@ class DriftSimulator:
         n = len(df)
         # Split: first 60% = train era, last 40% = test era
         self.train_era = self.df.iloc[:int(n * 0.60)]
-        self.test_era  = self.df.iloc[int(n * 0.60):]
+        self.test_era = self.df.iloc[int(n * 0.60):]
         logger.info(f"Train era: {len(self.train_era)} rows, "
                     f"Test era: {len(self.test_era)} rows")
 
@@ -98,7 +93,7 @@ class DriftSimulator:
     def measure_distribution_drift(self, col: str, method: str = "ks") -> dict:
         """Measure statistical drift between train and test era for a feature."""
         train_vals = self.train_era[col].dropna()
-        test_vals  = self.test_era[col].dropna()
+        test_vals = self.test_era[col].dropna()
 
         if method == "ks":
             stat, p_val = stats.ks_2samp(train_vals, test_vals)
@@ -122,7 +117,7 @@ class DriftSimulator:
             buckets + 1
         )
         expected_pct = np.histogram(expected, breakpoints)[0] / len(expected) + 1e-8
-        actual_pct   = np.histogram(actual, breakpoints)[0] / len(actual) + 1e-8
+        actual_pct = np.histogram(actual, breakpoints)[0] / len(actual) + 1e-8
         return float(np.sum((actual_pct - expected_pct) * np.log(actual_pct / expected_pct)))
 
     def compute_all_drift(self, top_n: int = 30) -> pd.DataFrame:
@@ -177,12 +172,12 @@ class ThresholdBasedRetraining(RetrainingStrategy):
     def __init__(self, min_recall: float = 0.75, min_auc: float = 0.82,
                  max_drift_psi: float = 0.2):
         super().__init__("threshold_based")
-        self.min_recall    = min_recall
-        self.min_auc       = min_auc
+        self.min_recall = min_recall
+        self.min_auc = min_auc
         self.max_drift_psi = max_drift_psi
 
     def should_retrain(self, recall: float = None, auc: float = None,
-                        max_psi: float = None, **kwargs) -> tuple[bool, str]:
+                       max_psi: float = None, **kwargs) -> tuple[bool, str]:
         reasons = []
         if recall is not None and recall < self.min_recall:
             reasons.append(f"recall={recall:.4f} < {self.min_recall}")
@@ -204,7 +199,7 @@ class PeriodicRetraining(RetrainingStrategy):
     def __init__(self, interval_days: int = 7):
         super().__init__("periodic")
         self.interval_days = interval_days
-        self.last_retrain  = datetime.utcnow()
+        self.last_retrain = datetime.utcnow()
 
     def should_retrain(self, current_time: datetime = None, **kwargs) -> tuple[bool, str]:
         now = current_time or datetime.utcnow()
@@ -226,7 +221,7 @@ class HybridRetraining(RetrainingStrategy):
                  min_interval_hours: int = 12):
         super().__init__("hybrid")
         self.threshold = ThresholdBasedRetraining(min_recall, min_auc, max_drift_psi)
-        self.periodic  = PeriodicRetraining(periodic_days)
+        self.periodic = PeriodicRetraining(periodic_days)
         self.min_interval_hours = min_interval_hours
         self.last_retrain = None
 
@@ -263,7 +258,7 @@ def compare_retraining_strategies(simulation_data: list[dict]) -> pd.DataFrame:
         "threshold_based": ThresholdBasedRetraining(),
         "periodic_weekly": PeriodicRetraining(interval_days=7),
         "periodic_biweekly": PeriodicRetraining(interval_days=14),
-        "hybrid":          HybridRetraining(),
+        "hybrid": HybridRetraining(),
     }
 
     results = {name: {"retrain_count": 0, "missed_alerts": 0, "events": []}
@@ -299,11 +294,11 @@ def compare_retraining_strategies(simulation_data: list[dict]) -> pd.DataFrame:
     comparison = []
     for name, res in results.items():
         comparison.append({
-            "strategy":        name,
-            "retrain_count":   res["retrain_count"],
-            "missed_alerts":   res["missed_alerts"],
-            "compute_cost":    res["retrain_count"] * 45,  # ~45 min per retrain
-            "responsiveness":  "HIGH" if res["missed_alerts"] == 0 else "LOW",
+            "strategy": name,
+            "retrain_count": res["retrain_count"],
+            "missed_alerts": res["missed_alerts"],
+            "compute_cost": res["retrain_count"] * 45,  # ~45 min per retrain
+            "responsiveness": "HIGH" if res["missed_alerts"] == 0 else "LOW",
         })
 
     return pd.DataFrame(comparison).sort_values("missed_alerts")
@@ -327,7 +322,7 @@ class DriftMonitor:
     def check_drift(self, current_data: pd.DataFrame) -> dict:
         simulator = DriftSimulator.__new__(DriftSimulator)
         simulator.train_era = self.reference
-        simulator.test_era  = current_data
+        simulator.test_era = current_data
         simulator.df = pd.concat([self.reference, current_data])
         simulator.time_col = None
 
@@ -360,8 +355,8 @@ if __name__ == "__main__":
     events = []
     for day in range(0, 90, 3):
         recall = max(0.60, 0.85 - day * 0.003 + np.random.normal(0, 0.02))
-        auc    = max(0.70, 0.91 - day * 0.002 + np.random.normal(0, 0.01))
-        psi    = min(0.50, 0.05 + day * 0.004 + np.random.normal(0, 0.02))
+        auc = max(0.70, 0.91 - day * 0.002 + np.random.normal(0, 0.01))
+        psi = min(0.50, 0.05 + day * 0.004 + np.random.normal(0, 0.02))
         events.append({"days_elapsed": day, "recall": recall, "auc": auc, "max_psi": psi})
 
     comparison = compare_retraining_strategies(events)
